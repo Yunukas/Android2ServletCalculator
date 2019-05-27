@@ -1,20 +1,27 @@
 package com.yy.calculator;
 
-import android.net.wifi.aware.SubscribeConfig;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 
-import java.security.cert.TrustAnchor;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
 
 public class MainActivity extends AppCompatActivity {
 
+    public static final String URL = ("http://10.0.2.2:8080/CalculatorBackend");
+
     // buttons of the calculator
     Button button0, button1, button2, button3, button4, button5, button6,
-            button7, button8, button9, buttonAdd, buttonSub, buttonDiv,
+            button7, button8, button9, buttonDot, buttonAdd, buttonSub, buttonDiv,
             buttonMul, buttonC, buttonEqual;
 
     // the result screen
@@ -28,31 +35,30 @@ public class MainActivity extends AppCompatActivity {
     // the button which user last clicked, # for numbers, + - * / = for operators
     char LastClicked = 'x';
 
-    String result = "0";
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        button0 = (Button) findViewById(R.id.zero);
-        button1 = (Button) findViewById(R.id.one);
-        button2 = (Button) findViewById(R.id.two);
-        button3 = (Button) findViewById(R.id.three);
-        button4 = (Button) findViewById(R.id.four);
-        button5 = (Button) findViewById(R.id.five);
-        button6 = (Button) findViewById(R.id.six);
-        button7 = (Button) findViewById(R.id.seven);
-        button8 = (Button) findViewById(R.id.eight);
-        button9 = (Button) findViewById(R.id.nine);
+        button0 = findViewById(R.id.zero);
+        button1 = findViewById(R.id.one);
+        button2 = findViewById(R.id.two);
+        button3 = findViewById(R.id.three);
+        button4 = findViewById(R.id.four);
+        button5 = findViewById(R.id.five);
+        button6 = findViewById(R.id.six);
+        button7 = findViewById(R.id.seven);
+        button8 = findViewById(R.id.eight);
+        button9 = findViewById(R.id.nine);
+        buttonDot = findViewById(R.id.dot);
         
-        buttonAdd = (Button) findViewById(R.id.plus);
-        buttonSub = (Button) findViewById(R.id.minus);
-        buttonMul = (Button) findViewById(R.id.star);
-        buttonDiv = (Button) findViewById(R.id.division);
-        buttonC = (Button) findViewById(R.id.ac);
-        buttonEqual = (Button) findViewById(R.id.equals);
-        screen = (TextView) findViewById(R.id.screen);
+        buttonAdd = findViewById(R.id.plus);
+        buttonSub = findViewById(R.id.minus);
+        buttonMul = findViewById(R.id.star);
+        buttonDiv = findViewById(R.id.division);
+        buttonC = findViewById(R.id.ac);
+        buttonEqual = findViewById(R.id.equals);
+        screen = findViewById(R.id.screen);
 
 
         button1.setOnClickListener(new View.OnClickListener() {
@@ -276,6 +282,34 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        buttonDot.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(OperationComplete)
+                {
+                    screen.setText("0.");
+                    OperationComplete = false;
+                    OperationInitiated = false;
+
+                }
+                else if(OperationInitiated)
+                {
+                    screen.setText("0.");
+                    OperationInitiated = false;
+                }
+                else
+                {
+                    if(screen.getText().toString().contains("."))
+                        return;
+                    else
+                        screen.setText(screen.getText() + ".");
+                }
+
+
+                LastClicked = '#';
+            }
+        });
+
         // addition
         buttonAdd.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -292,10 +326,7 @@ public class MainActivity extends AppCompatActivity {
                 // if an operation is already in queue, run it first
                 if(Addition|| Multiplication || Division || Subtraction )
                 {
-                    mValueTwo = Double.parseDouble(screen.getText() + "");
-                    mValueOne = Calculate();
-                    screen.setText(mValueOne + "");
-
+                    Calculate();
                 }
                 else
                 {
@@ -322,10 +353,7 @@ public class MainActivity extends AppCompatActivity {
 
                 if(Addition|| Multiplication || Division || Subtraction )
                 {
-                    mValueTwo = Double.parseDouble(screen.getText() + "");
-                    mValueOne = Calculate();
-                    screen.setText(mValueOne + "");
-
+                    Calculate();
                 }
                 else {
                     mValueOne = Double.parseDouble(screen.getText() + "");
@@ -353,10 +381,7 @@ public class MainActivity extends AppCompatActivity {
 
                 if(Addition || Subtraction || Division || Multiplication)
                 {
-                    mValueTwo = Double.parseDouble(screen.getText() + "");
-                    mValueOne = Calculate();
-                    screen.setText(mValueOne + "");
-
+                    Calculate();
                 }
                 else
                 {
@@ -384,11 +409,10 @@ public class MainActivity extends AppCompatActivity {
 
                 if (Addition || Subtraction || Division || Multiplication)
                 {
-                    mValueTwo = Double.parseDouble(screen.getText() + "");
-                    mValueOne = Calculate();
-                    screen.setText(mValueOne + "");
-
-                } else {
+                    Calculate();
+                }
+                else
+                {
                     mValueOne = Double.parseDouble(screen.getText() + "");
                 }
 
@@ -409,8 +433,8 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                mValueOne = Calculate();
-                screen.setText(mValueOne + "");
+                Calculate();
+
                 ResetVariables();
                 OperationComplete = true;
 
@@ -432,33 +456,37 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    public Double Calculate ()
+    public void Calculate ()
     {
-        double result;
 
         mValueTwo = Double.parseDouble(screen.getText() + "");
 
         OperationComplete = true;
 
+        // create an instance of the async class
+        DoWork task = new DoWork();
+
+        String operation = "?operation=";
+
         if(Addition)
         {
-            //Addition = false;
-            return mValueOne + mValueTwo;
+            operation += "Addition";
         }
         else if (Subtraction)
         {
-            return mValueOne - mValueTwo;
+            operation += "Subtraction";
         }
         else if(Multiplication)
         {
-            return mValueOne * mValueTwo;
+            operation += "Multiplication";
         }
         else if(Division)
         {
-            return mValueOne / mValueTwo;
+            operation += "Division";
         }
 
-        return 0.0;
+        // send the operation parameters to the backend
+        task.execute(new String[]{ URL + operation + "&num1=" + mValueOne + "&num2=" + mValueTwo});
     }
 
     public void SetOperation(char Operation)
@@ -495,5 +523,58 @@ public class MainActivity extends AppCompatActivity {
         OperationInitiated = false;
         OperationComplete = false;
         LastClicked = 'x';
+    }
+
+    // instance of this class will communicate with backend servlet and
+    // receive the result of the calculation
+    private class DoWork extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String... urls) {
+            String output = null;
+            for (String url : urls) {
+                output = getOutputFromUrl(url);
+            }
+            return output;
+        }
+        private String getOutputFromUrl(String url) {
+            StringBuffer output = new StringBuffer("");
+            try {
+                InputStream stream = getHttpConnection(url);
+                BufferedReader buffer = new BufferedReader(
+                        new InputStreamReader(stream));
+                String s = "";
+                while ((s = buffer.readLine()) != null)
+                    output.append(s);
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+            return output.toString();
+        }
+
+        private InputStream getHttpConnection(String urlString)
+                throws IOException {
+            InputStream stream = null;
+            java.net.URL url = new URL(urlString);
+            URLConnection connection = url.openConnection();
+
+            connection.setDoInput(true);
+            try {
+                HttpURLConnection httpConnection = (HttpURLConnection) connection;
+                httpConnection.setRequestMethod("GET");
+                httpConnection.connect();
+
+                if (httpConnection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                    stream = httpConnection.getInputStream();
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+            return stream;
+        }
+        @Override
+        protected void onPostExecute(String output) {
+            screen.setText(output);
+            mValueOne = Double.parseDouble(output);
+        }
     }
 }

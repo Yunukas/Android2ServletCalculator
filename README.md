@@ -1,1 +1,2 @@
-# A simple calculator project for learning android programming
+This is an android calculator app that communicates with a backend (servlet) 
+to process the calculations.
